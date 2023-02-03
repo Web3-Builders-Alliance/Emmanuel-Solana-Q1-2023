@@ -85,10 +85,13 @@ pub fn process_instruction(
 
 // Import crate borsh
 
+```
 use borsh::{ BorshDeserialize, BorshSerialize };
+```
 
 // Define the type of state stored in accounts
 
+```
 #[derive(BorshDeserialize, BorshSerialize, Debug)]
 pub struct AddressInfo {
     pub name: String,
@@ -96,9 +99,11 @@ pub struct AddressInfo {
     pub street: String,
     pub city: String,
 }
+```
 
 // This block accepts aurguments in method new and returns a newly created instance of struct AddressInfo
 
+```
 impl AddressInfo {
 
     pub fn new(
@@ -115,6 +120,7 @@ impl AddressInfo {
         }
     }
 }
+```
 
 ### d. mod.rs
 
