@@ -4,7 +4,7 @@ In this code journal I will be going over the program account-data.
 This program is designed to process address data and persist it into an account related to the address.
 The code is found in this link https://github.com/solana-developers/program-examples/tree/main/basics/account-data/native
 
- ---
+---
 
 ### 1. Program overview
 
@@ -110,6 +110,8 @@ pub fn process_instruction(
 }
 ```
 
+---
+
 ### c. address_info.rs
 
 // Import crate borsh
@@ -151,6 +153,8 @@ impl AddressInfo {
 }
 ```
 
+---
+
 ### d. mod.rs
 
 // Define module address_info as public
@@ -164,6 +168,8 @@ pub mod address_info;
 ```
 pub use address_info::*;
 ```
+
+---
 
 ### e. create.rs
 
@@ -233,6 +239,8 @@ pub fn create_address_info(
 }
 ```
 
+---
+
 ### f. mod.rs
 
 // Define module create as public
@@ -246,6 +254,8 @@ pub mod create;
 ```
 pub use create::*;
 ```
+
+---
 
 ### Final Thoughts
 
