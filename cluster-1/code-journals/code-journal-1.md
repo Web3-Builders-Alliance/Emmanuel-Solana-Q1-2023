@@ -1,6 +1,6 @@
 # Code Journal 1
 
-In this code journal 1 will be going over the program account-data.
+In this code journal I will be going over the program account-data.
 This program is designed to process address data and persist it into an account related to the address.
 The code is found in this link https://github.com/solana-developers/program-examples/tree/main/basics/account-data/native
 
@@ -44,6 +44,7 @@ pub mod state;
 
 // Declare and export the program's entrypoint
 entrypoint!(process_instruction);
+
 ---
 
 ### b. processor.rs
@@ -83,9 +84,11 @@ pub fn process_instruction(
 ### c. address_info.rs
 
 // Import crate borsh
+
 use borsh::{ BorshDeserialize, BorshSerialize };
 
 // Define the type of state stored in accounts
+
 #[derive(BorshDeserialize, BorshSerialize, Debug)]
 pub struct AddressInfo {
     pub name: String,
@@ -93,7 +96,9 @@ pub struct AddressInfo {
     pub street: String,
     pub city: String,
 }
+
 // This block accepts aurguments in method new and returns a newly created instance of struct AddressInfo
+
 impl AddressInfo {
 
     pub fn new(
