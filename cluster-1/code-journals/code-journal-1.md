@@ -6,7 +6,7 @@ The code is found in this link https://github.com/solana-developers/program-exam
 
 ---
 
-### 1. Program overview
+## 1. Program overview
 
 The program "account-data" is split into below logical units;
 
@@ -22,7 +22,7 @@ iii. state which contains address_info.rs and mod.rs
 
 ---
 
-### 2. Mechanism
+## 2. Mechanism
 
 
 The program uses cross-program invocation mechanism.
@@ -30,7 +30,7 @@ Create address_info is done through cross-program invocation by calling solana_p
 
 ---
 
-### 3. Program modules
+## 3. Program modules
 
 ### a. lib.rs
 
@@ -257,6 +257,6 @@ pub use create::*;
 
 ---
 
-### Final Thoughts
+## Final Thoughts
 
 This a smart contract(program) that processes and persists address data, it helped me understand the logical flow of data and how its stored in the address accounts. 
