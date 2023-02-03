@@ -13,6 +13,7 @@ The program "account-data" is split into below logical units;
 a.
 lib.rs
 This defines the entrypoint of the program and registers all the modules
+
 b.
 modules
 i. instructions which contains create.rs and mod.rs
@@ -34,35 +35,62 @@ Create address_info is done through cross-program invocation by calling solana_p
 ### a. lib.rs
 
 // Import module solana_program::entrypoint
+
+```
 use solana_program::entrypoint;
+```
+
 // Import module processor and its function process_instruction
+
+```
 use processor::process_instruction;
+```
+
 // Declare modules(instructions,processor and state) as public
+
+```
 pub mod instructions;
 pub mod processor;
 pub mod state;
+```
 
 // Declare and export the program's entrypoint
+
+```
 entrypoint!(process_instruction);
+```
 
 ---
 
 ### b. processor.rs
 
 // Import crate borsh
+
+```
 use borsh::{ BorshDeserialize, BorshSerialize };
+```
+
 // Import crate solana_program
+
+```
 use solana_program::{
     account_info::AccountInfo, 
     entrypoint::ProgramResult, 
     program_error::ProgramError,
     pubkey::Pubkey,
 };
+```
+
 // Import modules instructions and state
+
+```
 use crate::instructions;
 use crate::state::AddressInfo;
+```
 
 // Program entrypoint's implementation
+
+```
 pub fn process_instruction(
     program_id: &Pubkey, // Public key of the account the account-data program was loaded into
     accounts: &[AccountInfo], // The account to be used for the address
@@ -80,6 +108,7 @@ pub fn process_instruction(
 	// Throw an error indicating that instruction data is invalid
     Err(ProgramError::InvalidInstructionData)
 }
+```
 
 ### c. address_info.rs
 
@@ -125,15 +154,28 @@ impl AddressInfo {
 ### d. mod.rs
 
 // Define module address_info as public
+
+```
 pub mod address_info;
+```
+
 // Import module address_info and all its public members and methods
+
+```
 pub use address_info::*;
+```
 
 ### e. create.rs
 
 // Import crate borsh
+
+```
 use borsh::{ BorshDeserialize, BorshSerialize };
+```
+
 // Import crate solana_program
+
+```
 use solana_program::{
     account_info::{ AccountInfo, next_account_info },
     entrypoint::ProgramResult, 
@@ -144,10 +186,15 @@ use solana_program::{
     system_program,
     sysvar::Sysvar,
 };
+```
+
 // Import module state
+
+```
 use crate::state::AddressInfo;
+```
 
-
+```
 pub fn create_address_info(
     program_id: &Pubkey, // Public key of the account the account-data program was loaded into
     accounts: &[AccountInfo], // The account to be used for the address
@@ -184,13 +231,21 @@ pub fn create_address_info(
 	// gracefully exit the function
     Ok(())
 }
+```
 
 ### f. mod.rs
 
 // Define module create as public
+
+```
 pub mod create;
+```
+
 // Import module create and all its public members and methods
+
+```
 pub use create::*;
+```
 
 ### Final Thoughts
 
