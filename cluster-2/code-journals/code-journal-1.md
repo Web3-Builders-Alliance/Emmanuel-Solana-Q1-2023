@@ -1,4 +1,4 @@
-# Code Journal 2
+# Code Journal 1
 
 In this code journal, I will be going over the anchor program account-data.
 This program is designed to process address data and persist it into an account related to the address.
