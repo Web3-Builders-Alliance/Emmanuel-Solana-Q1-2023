@@ -244,10 +244,10 @@ pub use address_info::*;
   - borrowing, ownership
 ### b. What is the organization?
        The code is organized through modules.
-	   #### lib.rs
+####   lib.rs
 	   This defines the entrypoint of the program
 
-	   #### modules
+####   modules
        - instructions which contains create.rs and mod.rs
        - state which contains address_info.rs and mod.rs
 ### c. 
