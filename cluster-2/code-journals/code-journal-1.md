@@ -243,11 +243,17 @@ pub use address_info::*;
 ### a. What are the concepts 
   - borrowing, ownership
 ### b. What is the organization?
-  - The code is organized through modules
+  - The code is organized through modules.
+#### lib.rs
+This defines the entrypoint of the program
+
+#### modules
+i. instructions which contains create.rs and mod.rs
+ii. state which contains address_info.rs and mod.rs
 ### c. 
-i. What is the contract doing?
+#### i. What is the contract doing?
    This a smart contract(program) that processes and persists address data. 
-ii. What is the mechanism? 
+#### ii. What is the mechanism? 
     The program uses cross-program invocation mechanism.
     Account for address_info is created through cross-program invocation by calling system_program::create_account
 ### d. How could it be better? More efficient? Safer?
