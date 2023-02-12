@@ -240,17 +240,17 @@ pub use address_info::*;
 
 ## 4. Code Journal summary
 
-a. What are the concepts 
+### a. What are the concepts 
   - borrowing, ownership
-b. What is the organization?
+### b. What is the organization?
   - The code is organized through modules
-c. 
+### c. 
 i. What is the contract doing?
    This a smart contract(program) that processes and persists address data. 
 ii. What is the mechanism? 
     The program uses cross-program invocation mechanism.
     Account for address_info is created through cross-program invocation by calling system_program::create_account
-d. How could it be better? More efficient? Safer?
+### d. How could it be better? More efficient? Safer?
   - The code could be safer and better if we added "owner: Pubkey" to "pub struct AddressInfo" in address_info.rs.
     This will allow us to conduct owner check before passing data to account in "fn create_address_info" within create.rs.
 	Below is the code we will added;
