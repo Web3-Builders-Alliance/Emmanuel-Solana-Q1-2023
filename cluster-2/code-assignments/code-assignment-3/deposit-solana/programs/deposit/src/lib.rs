@@ -29,6 +29,13 @@ pub mod deposit {
         Ok(())
     }
 
+    pub fn initialize_limit(ctx: Context<CreateLimit>) -> Result<()> {
+        let deposit_account = &mut ctx.accounts.deposit_account;
+        deposit_account.deposit_auth = *ctx.accounts.deposit_auth.key;
+        ctx.accounts.deposit_account.auth_bump = *ctx.bumps.get("pda_auth").unwrap();
+        Ok(())
+    }
+
     //methods for depositing native tokens
     pub fn deposit_native(ctx: Context<DepositNative>, amount: u64) -> Result<()> {
         let deposit_account = &mut ctx.accounts.deposit_account;
@@ -109,6 +116,21 @@ pub mod deposit {
             ctx.accounts.into_transfer_to_deposit_auth_context().with_signer(&[&seeds[..]]),
             amount)?;
 
+        Ok(())
+    }
+
+    pub fn update_limit(ctx: Context<UpdateLimit>) -> Result<()> {
+        // to be implemeted
+        Ok(())
+    }
+
+    pub fn accept_limit(ctx: Context<AcceptLimit>) -> Result<()> {
+        // to be implemeted
+        Ok(())
+    }
+
+    pub fn remove_limit(ctx: Context<RemoveLimit>) -> Result<()> {
+        // to be implemeted
         Ok(())
     }
    
