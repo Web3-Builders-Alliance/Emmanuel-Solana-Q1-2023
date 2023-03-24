@@ -28,16 +28,32 @@ pub mod binary_options {
         }
         
         let deposit_account = &mut ctx.accounts.deposit_account;
+        let deposit_auth = &ctx.accounts.deposit_auth;
+        let sys_program = &ctx.accounts.system_program;
+
         deposit_account.deposit_auth = *ctx.accounts.deposit_auth.key;
+        deposit_account.taker_auth = *ctx.accounts.deposit_auth.key;
         deposit_account.auth_bump = *ctx.bumps.get("pda_auth").unwrap();
+        deposit_account.sol_vault_bump = ctx.bumps.get("sol_vault").copied();
         deposit_account.betting_description = betting_description;
         deposit_account.betting_amount = amount;
         deposit_account.first_participant = participantPosition;
+        deposit_account.betting_state = 1;
+
+        let cpi_accounts = system_program::Transfer {
+            from: deposit_auth.to_account_info(),
+            to: ctx.accounts.sol_vault.to_account_info(),
+        };
+
+        let cpi = CpiContext::new(sys_program.to_account_info(), cpi_accounts);
+
+        system_program::transfer(cpi, amount)?;
+
         Ok(())
     }
 
     // deposit native sol
-    pub fn deposit_native(ctx: Context<DepositNative>, amount: u64) -> Result<()> {
+    pub fn deposit_native(ctx: Context<DepositNative>, amount: u64, participant_position: ParticipantPosition) -> Result<()> {
         let valid_amount = {
             if amount > 0 {
                 true
@@ -64,7 +80,51 @@ pub mod binary_options {
             return Err(Errors::InvalidDepositAmount.into());
         }
 
-        deposit_account.sol_vault_bump = ctx.bumps.get("sol_vault").copied();
+        // first participant is not allowed to make prediction since they had previously done so in create options.
+        if deposit_account.deposit_auth.eq(deposit_auth.key) {
+            return Err(Errors::PredictionDisAllowed.into());
+        }
+
+        let first_participant_position = {
+            match deposit_account.first_participant {
+                ParticipantPosition::Long => true,
+                ParticipantPosition::Short => false,
+                _ => false
+            }
+        };
+        let second_participant_position = {
+            match participant_position {
+                ParticipantPosition::Long => true,
+                ParticipantPosition::Short => false,
+                _ => false
+            }
+        };
+
+        let valid_participant_position = {
+            if !first_participant_position && second_participant_position {
+                true
+            }
+            else if first_participant_position && !second_participant_position {
+                true
+            }
+            else{false}
+        };
+
+        if !valid_participant_position {
+            // Both predictions cannot not be same.
+            return Err(Errors::PredictionCannotBeSame.into()); 
+        }
+
+        // Lets indicate that prediction has been completed by two participants
+        deposit_account.made_prediction = true;
+        deposit_account.second_participant = participant_position;
+
+        // Lets maintain the pubkey of the second participant
+        deposit_account.taker_auth = *ctx.accounts.deposit_auth.key;
+        // Lets change the betting state to indicate limit of two participants has been met
+        deposit_account.betting_state = 2;
+
+        //deposit_account.sol_vault_bump = ctx.bumps.get("sol_vault").copied();
 
         let cpi_accounts = system_program::Transfer {
             from: deposit_auth.to_account_info(),
@@ -92,10 +152,58 @@ pub mod binary_options {
         }
 
         let deposit_account = &ctx.accounts.deposit_account;
+        let deposit_auth = &ctx.accounts.deposit_auth;
 
-        // trader must have made a correct prediction and won it
+        // we only allow either first or second participants to withdraw since the two made the prediction
+        if deposit_account.deposit_auth.eq(deposit_auth.key) || deposit_account.taker_auth.eq(deposit_auth.key) {
+            return Err(Errors::WithdrawalDisAllowed.into());
+        }
+
+        // participant must have made a correct prediction and won it
         if !deposit_account.made_prediction{
             return Err(Errors::InvalidPrediction.into());
+        }
+        /*
+        let winning_participant = deposit_account.won_prediction;
+
+        let first_participant = {
+            match winning_participant {
+                Participants::First => true,
+                Participants::Second => false,
+                _ => false
+            }
+        };
+
+        let second_participant = {
+            match winning_participant {
+                Participants::First => false,
+                Participants::Second => true,
+                _ => false
+            }
+        };
+
+
+        let valid_participant_winner = {
+            if !first_participant_position && deposit_account.deposit_auth.eq(deposit_auth.key) {
+                true
+            }
+            else if second_participant_position && deposit_account.taker_auth.eq(deposit_auth.key) {
+                true
+            }
+            else{false}
+        };
+        */
+
+        let valid_participant_winner = {
+            if deposit_account.winner_auth.eq(deposit_auth.key) {
+                true
+            }
+            else{false}
+        };
+
+        if !valid_participant_winner {
+            // Invalid participant winner.
+            return Err(Errors::InvalidWinner.into());
         }
 
         // make a check to determine the person withdrawing is the one who won the prediction
@@ -117,7 +225,7 @@ pub mod binary_options {
         }
 
         let sys_program = &ctx.accounts.system_program;
-        let deposit_account = &ctx.accounts.deposit_account;
+        //let deposit_account = &ctx.accounts.deposit_account;
         let pda_auth = &mut ctx.accounts.pda_auth;
         let sol_vault = &mut ctx.accounts.sol_vault;
 
@@ -140,7 +248,7 @@ pub mod binary_options {
 
         Ok(())
     }
-
+    /*
     pub fn make_prediction(ctx: Context<MakePrediction>, strike_price: u64, participant_position: ParticipantPosition) -> Result<()> {
         let valid_amount = {
             if strike_price > 0 {
@@ -196,7 +304,7 @@ pub mod binary_options {
 
         Ok(())
     }
-
+    */
     pub fn process_prediction(ctx: Context<ProcessPrediction>, winning_position: ParticipantPosition, winning_amount: u64) -> Result<()> {
         /*
         let valid_amount = {
@@ -223,7 +331,7 @@ pub mod binary_options {
 
         let deposit_account = &mut ctx.accounts.deposit_account;
 
-        // Trader wins when strike_price is equal to asset_current_price
+        // participant wins when strike_price is equal to asset_current_price
         /*
         let won_prediction = {
             if deposit_account.strike_price == asset_current_price {
@@ -246,23 +354,39 @@ pub mod binary_options {
                 _ => false
             }
         };
-        let winning_position = {
+        let valid_participant_position = {
+            if !first_participant_position && second_participant_position {
+                true
+            }
+            else if first_participant_position && !second_participant_position {
+                true
+            }
+            else{false}
+        };
+        if !valid_participant_position {
+            // Both predictions cannot not be same.
+            return Err(Errors::PredictionCannotBeSame.into()); 
+        }
+        let winning_position_bool = {
             match winning_position {
                 ParticipantPosition::Long => true,
                 ParticipantPosition::Short => false,
                 _ => false
             }
         };
-
+        /*
         let winning_participant = {
-            if first_participant_position && winning_position {
+            if first_participant_position && winning_position_bool {
                 Participants::First
             }
-            else if second_participant_position && winning_position {
+            else if second_participant_position && winning_position_bool {
                 Participants::Second
             }
             else{Participants::Unknown}
         };
+        deposit_account.won_prediction = winning_participant;
+        */
+
         /*
         if won_prediction {
             let deposited_amount = deposit_account.deposited_amount;
@@ -281,7 +405,16 @@ pub mod binary_options {
             deposit_account.total_payout = deposited_amount + winning_amount;    
         }
         */
-        deposit_account.won_prediction = winning_participant;
+
+        // first_participant - deposit_account.deposit_auth
+        // second_participant -  deposit_account.taker_auth
+        if first_participant_position && winning_position_bool {
+            deposit_account.winner_auth = deposit_account.deposit_auth;
+        }
+        else if second_participant_position && winning_position_bool {
+            deposit_account.winner_auth = deposit_account.taker_auth;
+        }
+        else{}
 
         Ok(())
     }
@@ -295,18 +428,6 @@ pub struct Initialize<'info> {
     #[account(seeds = [b"auth", deposit_account.key().as_ref()], bump)]
     /// CHECK: no need to check this.
     pub pda_auth: UncheckedAccount<'info>,
-    #[account(mut)]
-    pub deposit_auth: Signer<'info>,
-    pub system_program: Program<'info, System>,
-}
-
-#[derive(Accounts)]
-pub struct DepositNative<'info> {
-    #[account(mut, has_one = deposit_auth)]
-    pub deposit_account: Account<'info, DepositBase>,
-    #[account(seeds = [b"auth", deposit_account.key().as_ref()], bump = deposit_account.auth_bump)]
-    /// CHECK: no need to check this.
-    pub pda_auth: UncheckedAccount<'info>,
     #[account(mut, seeds = [b"sol_vault", pda_auth.key().as_ref()], bump)]
     pub sol_vault: SystemAccount<'info>,
     #[account(mut)]
@@ -315,8 +436,12 @@ pub struct DepositNative<'info> {
 }
 
 #[derive(Accounts)]
-pub struct WithdrawNative<'info> {
-    #[account(has_one = deposit_auth)]
+pub struct DepositNative<'info> {
+    //#[account(mut, has_one = deposit_auth)]
+    //#[account(mut)]
+    #[account(mut,
+        constraint = deposit_account.betting_state == 1 @ Errors::InvalidParticipantsLimit,
+    )]
     pub deposit_account: Account<'info, DepositBase>,
     #[account(seeds = [b"auth", deposit_account.key().as_ref()], bump = deposit_account.auth_bump)]
     /// CHECK: no need to check this.
@@ -329,6 +454,20 @@ pub struct WithdrawNative<'info> {
 }
 
 #[derive(Accounts)]
+pub struct WithdrawNative<'info> {
+    //#[account(has_one = deposit_auth)]
+    pub deposit_account: Account<'info, DepositBase>,
+    #[account(seeds = [b"auth", deposit_account.key().as_ref()], bump = deposit_account.auth_bump)]
+    /// CHECK: no need to check this.
+    pub pda_auth: UncheckedAccount<'info>,
+    #[account(mut, seeds = [b"sol_vault", pda_auth.key().as_ref()], bump = deposit_account.sol_vault_bump.unwrap())]
+    pub sol_vault: SystemAccount<'info>,
+    #[account(mut)]
+    pub deposit_auth: Signer<'info>,
+    pub system_program: Program<'info, System>,
+}
+/*
+#[derive(Accounts)]
 pub struct MakePrediction<'info> {
     #[account(has_one = deposit_auth)]
     pub deposit_account: Account<'info, DepositBase>,
@@ -336,7 +475,7 @@ pub struct MakePrediction<'info> {
     pub deposit_auth: Signer<'info>,
     pub system_program: Program<'info, System>,
 }
-
+*/
 #[derive(Accounts)]
 pub struct ProcessPrediction<'info> {
     #[account(has_one = deposit_auth)]
@@ -349,6 +488,8 @@ pub struct ProcessPrediction<'info> {
 #[account]
 pub struct DepositBase {
     pub deposit_auth: Pubkey,
+    pub taker_auth: Pubkey,
+    pub winner_auth: Pubkey,
     pub auth_bump: u8,
     pub sol_vault_bump: Option<u8>,
     pub betting_description: String,
@@ -356,14 +497,15 @@ pub struct DepositBase {
     pub deposited_amount: u64,
     //pub strike_price: u64,
     pub made_prediction: bool,
-    pub won_prediction: Participants,
+    //pub won_prediction: Participants,
     pub total_payout: u64,
     pub first_participant: ParticipantPosition,
     pub second_participant: ParticipantPosition,
+    pub betting_state: u8,
 }
 
 impl DepositBase {
-    const LEN: usize = 8 + 32 + 1 + 1 + 1 + 8 + 8 + 1 + 1 + 8 + 4 + DESCRIPTION_LENGTH + 1 + 1 + 1;
+    const LEN: usize = 8 + 32 + 32 + 1 + 1 + 1 + 8 + 8 + 1 + 1 + 8 + 4 + DESCRIPTION_LENGTH + 1 + 1 + 1;
 }
 //Calculate the space for the enum. I just gave it value 1
 #[derive(AnchorSerialize, AnchorDeserialize, Copy, Clone)]
@@ -398,4 +540,12 @@ pub enum Errors {
     ExceededDescriptionMaxLength,
     #[msg("Both predictions cannot not be same.")]
     PredictionCannotBeSame,
+    #[msg("Single participant is not allowed to take both predictions.")]
+    PredictionDisAllowed,
+    #[msg("Participant not allowed to make a withdrawal.")]
+    WithdrawalDisAllowed,
+    #[msg("Invalid participant winner.")]
+    InvalidWinner,
+    #[msg("Create options not initialised or participants limit of two cannot be exceeded.")]
+    InvalidParticipantsLimit,
 }
