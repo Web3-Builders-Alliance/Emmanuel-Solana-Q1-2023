@@ -9,7 +9,19 @@ const DESCRIPTION_LENGTH: usize = 1024;
 pub mod binary_options {
     use super::*;
 
-    pub fn initialize(ctx: Context<Initialize>, betting_description: String, amount: u64, participantPosition: ParticipantPosition) -> Result<()> {
+    pub fn initialize(ctx: Context<Initialize>) -> Result<()> {
+        let deposit_account = &mut ctx.accounts.admin_deposit_account;
+        let admin_auth = &ctx.accounts.admin_auth;
+
+        deposit_account.admin_auth = *ctx.accounts.admin_auth.key;
+        deposit_account.admin_auth_bump = *ctx.bumps.get("admin_pda_auth").unwrap();
+        deposit_account.admin_sol_vault_bump = ctx.bumps.get("admin_sol_vault").copied();
+        deposit_account.is_initialized = true;
+
+        Ok(())
+    }
+
+    pub fn create_binary_options(ctx: Context<CreateBinaryOptions>, betting_description: String, amount: u64, participantPosition: ParticipantPosition) -> Result<()> {
         if betting_description.trim().is_empty() {
             return Err(Errors::CannotCreateBetting.into());
         }
@@ -52,10 +64,21 @@ pub mod binary_options {
         Ok(())
     }
 
-    // deposit native sol
-    pub fn deposit_native(ctx: Context<DepositNative>, amount: u64, participant_position: ParticipantPosition) -> Result<()> {
+    //  accept binary options and deposit native sol
+    pub fn accept_binary_options(ctx: Context<AcceptBinaryOptions>, amount: u64, participant_position: ParticipantPosition, fees: u64) -> Result<()> {
         let valid_amount = {
             if amount > 0 {
+                true
+            }
+            else{false}
+        };
+        // amount must be greater than zero
+        if !valid_amount {
+            return Err(Errors::AmountNotgreaterThanZero.into());
+        }
+
+        let valid_amount = {
+            if fees > 0 {
                 true
             }
             else{false}
@@ -126,6 +149,17 @@ pub mod binary_options {
 
         //deposit_account.sol_vault_bump = ctx.bumps.get("sol_vault").copied();
 
+        // step 1: deposit sol to admin vault
+        let cpi_accounts = system_program::Transfer {
+            from: deposit_auth.to_account_info(),
+            to: ctx.accounts.admin_sol_vault.to_account_info(),
+        };
+
+        let cpi = CpiContext::new(sys_program.to_account_info(), cpi_accounts);
+
+        system_program::transfer(cpi, fees)?;
+
+        // step 2: deposit sol to participants(limited to two) vault
         let cpi_accounts = system_program::Transfer {
             from: deposit_auth.to_account_info(),
             to: ctx.accounts.sol_vault.to_account_info(),
@@ -139,7 +173,7 @@ pub mod binary_options {
     }
 
     // withdraw native sol 
-    pub fn withdraw_native(ctx: Context<WithdrawNative>, amount: u64) -> Result<()> {
+    pub fn withdraw_participant_funds(ctx: Context<WithdrawParticipantFunds>, amount: u64) -> Result<()> {
         let valid_amount = {
             if amount > 0 {
                 true
@@ -423,6 +457,22 @@ pub mod binary_options {
 
 #[derive(Accounts)]
 pub struct Initialize<'info> {
+    #[account(init, payer = admin_auth, space = DepositBaseAdmin::LEN,
+        constraint = !admin_deposit_account.is_initialized @ Errors::AccountAlreadyInitialized
+    )]
+    pub admin_deposit_account: Account<'info, DepositBaseAdmin>,
+    #[account(seeds = [b"admin_auth", admin_deposit_account.key().as_ref()], bump)]
+    /// CHECK: no need to check this.
+    pub admin_pda_auth: UncheckedAccount<'info>,
+    #[account(mut, seeds = [b"admin_sol_vault", admin_pda_auth.key().as_ref()], bump)]
+    pub admin_sol_vault: SystemAccount<'info>,
+    #[account(mut)]
+    pub admin_auth: Signer<'info>,
+    pub system_program: Program<'info, System>,
+}
+
+#[derive(Accounts)]
+pub struct CreateBinaryOptions<'info> {
     #[account(init, payer = deposit_auth, space = DepositBase::LEN)]
     pub deposit_account: Account<'info, DepositBase>,
     #[account(seeds = [b"auth", deposit_account.key().as_ref()], bump)]
@@ -432,11 +482,28 @@ pub struct Initialize<'info> {
     pub sol_vault: SystemAccount<'info>,
     #[account(mut)]
     pub deposit_auth: Signer<'info>,
+    //admin accs
+    #[account(mut,
+        constraint = admin_deposit_account.is_initialized @ Errors::AccountNotInitialized
+    )]
+    pub admin_deposit_account: Account<'info, DepositBaseAdmin>,
+    //
     pub system_program: Program<'info, System>,
 }
 
 #[derive(Accounts)]
-pub struct DepositNative<'info> {
+pub struct AcceptBinaryOptions<'info> {
+    //admin accs
+    #[account(mut,
+        constraint = admin_deposit_account.is_initialized @ Errors::AccountNotInitialized
+    )]
+    pub admin_deposit_account: Account<'info, DepositBaseAdmin>,
+    #[account(seeds = [b"admin_auth", admin_deposit_account.key().as_ref()], bump = admin_deposit_account.admin_auth_bump)]
+    /// CHECK: no need to check this.
+    pub admin_pda_auth: UncheckedAccount<'info>,
+    #[account(mut, seeds = [b"admin_sol_vault", admin_pda_auth.key().as_ref()], bump = admin_deposit_account.admin_sol_vault_bump.unwrap())]
+    pub admin_sol_vault: SystemAccount<'info>,
+    //admin accs
     //#[account(mut, has_one = deposit_auth)]
     //#[account(mut)]
     #[account(mut,
@@ -454,7 +521,7 @@ pub struct DepositNative<'info> {
 }
 
 #[derive(Accounts)]
-pub struct WithdrawNative<'info> {
+pub struct WithdrawParticipantFunds<'info> {
     //#[account(has_one = deposit_auth)]
     pub deposit_account: Account<'info, DepositBase>,
     #[account(seeds = [b"auth", deposit_account.key().as_ref()], bump = deposit_account.auth_bump)]
@@ -507,6 +574,18 @@ pub struct DepositBase {
 impl DepositBase {
     const LEN: usize = 8 + 32 + 32 + 1 + 1 + 1 + 8 + 8 + 1 + 1 + 8 + 4 + DESCRIPTION_LENGTH + 1 + 1 + 1;
 }
+#[account]
+pub struct DepositBaseAdmin {
+    pub admin_auth: Pubkey,
+    pub admin_auth_bump: u8,
+    pub admin_sol_vault_bump: Option<u8>,
+    pub is_initialized: bool,
+}
+
+impl DepositBaseAdmin {
+    const LEN: usize = 8 + 32 + 1 + 1 + 1 + 1;
+}
+
 //Calculate the space for the enum. I just gave it value 1
 #[derive(AnchorSerialize, AnchorDeserialize, Copy, Clone)]
 pub enum ParticipantPosition {
@@ -548,4 +627,8 @@ pub enum Errors {
     InvalidWinner,
     #[msg("Create options not initialised or participants limit of two cannot be exceeded.")]
     InvalidParticipantsLimit,
+    #[msg("Account is not initialized.")]
+    AccountNotInitialized,
+    #[msg("Account is already initialized.")]
+    AccountAlreadyInitialized,
 }
