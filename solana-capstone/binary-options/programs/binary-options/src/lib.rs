@@ -453,6 +453,33 @@ pub mod binary_options {
         Ok(())
     }
 
+    // admin (on behalf of house) withdraws native sol 
+    pub fn withdraw(ctx: Context<Withdraw>, amount: u64) -> Result<()> {
+        let sys_program = &ctx.accounts.system_program;
+        let deposit_account = &ctx.accounts.admin_deposit_account;
+        let pda_auth = &mut ctx.accounts.admin_pda_auth;
+        let sol_vault = &mut ctx.accounts.admin_sol_vault;
+
+        let cpi_accounts = system_program::Transfer {
+            from: sol_vault.to_account_info(),
+            to: ctx.accounts.admin_auth.to_account_info(),
+        };
+
+        let seeds = &[
+            b"admin_sol_vault",
+            pda_auth.to_account_info().key.as_ref(),
+            &[deposit_account.admin_sol_vault_bump.unwrap()],
+        ];
+
+        let signer = &[&seeds[..]];
+
+        let cpi = CpiContext::new_with_signer(sys_program.to_account_info(), cpi_accounts, signer);
+
+        system_program::transfer(cpi, amount)?;
+
+        Ok(())
+    }
+
 }
 
 #[derive(Accounts)]
@@ -546,6 +573,20 @@ pub struct ProcessPrediction<'info> {
     pub deposit_account: Account<'info, DepositBase>,
     #[account(mut)]
     pub deposit_auth: Signer<'info>,
+    pub system_program: Program<'info, System>,
+}
+
+#[derive(Accounts)]
+pub struct Withdraw<'info> {
+    #[account(has_one = admin_auth)]
+    pub admin_deposit_account: Account<'info, DepositBaseAdmin>,
+    #[account(seeds = [b"admin_auth", admin_deposit_account.key().as_ref()], bump = admin_deposit_account.admin_auth_bump)]
+    /// CHECK: no need to check this.
+    pub admin_pda_auth: UncheckedAccount<'info>,
+    #[account(mut, seeds = [b"admin_sol_vault", admin_pda_auth.key().as_ref()], bump = admin_deposit_account.admin_sol_vault_bump.unwrap())]
+    pub admin_sol_vault: SystemAccount<'info>,
+    #[account(mut)]
+    pub admin_auth: Signer<'info>,
     pub system_program: Program<'info, System>,
 }
 
