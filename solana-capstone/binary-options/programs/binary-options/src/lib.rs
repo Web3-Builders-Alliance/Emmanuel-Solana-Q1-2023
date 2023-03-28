@@ -504,8 +504,6 @@ pub struct AcceptBinaryOptions<'info> {
     #[account(mut, seeds = [b"admin_sol_vault", admin_pda_auth.key().as_ref()], bump = admin_deposit_account.admin_sol_vault_bump.unwrap())]
     pub admin_sol_vault: SystemAccount<'info>,
     //admin accs
-    //#[account(mut, has_one = deposit_auth)]
-    //#[account(mut)]
     #[account(mut,
         constraint = deposit_account.betting_state == 1 @ Errors::InvalidParticipantsLimit,
     )]
@@ -522,7 +520,6 @@ pub struct AcceptBinaryOptions<'info> {
 
 #[derive(Accounts)]
 pub struct WithdrawParticipantFunds<'info> {
-    //#[account(has_one = deposit_auth)]
     pub deposit_account: Account<'info, DepositBase>,
     #[account(seeds = [b"auth", deposit_account.key().as_ref()], bump = deposit_account.auth_bump)]
     /// CHECK: no need to check this.
