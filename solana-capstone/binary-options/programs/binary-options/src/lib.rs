@@ -21,15 +21,41 @@ pub mod binary_options {
         Ok(())
     }
 
-    pub fn create_binary_options(ctx: Context<CreateBinaryOptions>, betting_description: String, amount: u64, participantPosition: ParticipantPosition) -> Result<()> {
-        if betting_description.trim().is_empty() {
+    pub fn create_binary_options(ctx: Context<CreateBinaryOptions>, bet_description: String, bet_amount: u64, strike_price: u64, taker_amount: u64, participantPosition: ParticipantPosition) -> Result<()> {
+        if bet_description.trim().is_empty() {
             return Err(Errors::CannotCreateBetting.into());
         }
-        if betting_description.as_bytes().len() > DESCRIPTION_LENGTH {
+        if bet_description.as_bytes().len() > DESCRIPTION_LENGTH {
             return Err(Errors::ExceededDescriptionMaxLength.into());
         }
+
+        // bet_amount
         let valid_amount = {
-            if amount > 0 {
+            if bet_amount > 0 {
+                true
+            }
+            else{false}
+        };
+        // amount must be greater than zero
+        if !valid_amount {
+            return Err(Errors::AmountNotgreaterThanZero.into());
+        }
+        
+        // strike_price
+        let valid_amount = {
+            if strike_price > 0 {
+                true
+            }
+            else{false}
+        };
+        // amount must be greater than zero
+        if !valid_amount {
+            return Err(Errors::AmountNotgreaterThanZero.into());
+        }
+
+        // taker_amount
+        let valid_amount = {
+            if taker_amount > 0 {
                 true
             }
             else{false}
@@ -47,8 +73,10 @@ pub mod binary_options {
         deposit_account.taker_auth = *ctx.accounts.deposit_auth.key;
         deposit_account.auth_bump = *ctx.bumps.get("pda_auth").unwrap();
         deposit_account.sol_vault_bump = ctx.bumps.get("sol_vault").copied();
-        deposit_account.betting_description = betting_description;
-        deposit_account.betting_amount = amount;
+        deposit_account.bet_description = bet_description;
+        deposit_account.bet_amount = bet_amount;
+        deposit_account.strike_price = strike_price;
+        deposit_account.taker_amount = taker_amount;
         deposit_account.first_participant = participantPosition;
         deposit_account.betting_state = 1;
 
@@ -59,13 +87,13 @@ pub mod binary_options {
 
         let cpi = CpiContext::new(sys_program.to_account_info(), cpi_accounts);
 
-        system_program::transfer(cpi, amount)?;
+        system_program::transfer(cpi, bet_amount)?;
 
         Ok(())
     }
 
     //  accept binary options and deposit native sol
-    pub fn accept_binary_options(ctx: Context<AcceptBinaryOptions>, amount: u64, participant_position: ParticipantPosition, fees: u64) -> Result<()> {
+    pub fn accept_binary_options(ctx: Context<AcceptBinaryOptions>, amount: u64, participant_position: ParticipantPosition) -> Result<()> {
         let valid_amount = {
             if amount > 0 {
                 true
@@ -76,7 +104,7 @@ pub mod binary_options {
         if !valid_amount {
             return Err(Errors::AmountNotgreaterThanZero.into());
         }
-
+        /*
         let valid_amount = {
             if fees > 0 {
                 true
@@ -87,18 +115,18 @@ pub mod binary_options {
         if !valid_amount {
             return Err(Errors::AmountNotgreaterThanZero.into());
         }
-
+        */
         let deposit_account = &mut ctx.accounts.deposit_account;
         let deposit_auth = &ctx.accounts.deposit_auth;
         let sys_program = &ctx.accounts.system_program;
 
         let valid_amount = {
-            if amount == deposit_account.betting_amount {
+            if amount == deposit_account.taker_amount {
                 true
             }
             else{false}
         };
-        // amount must be equal to betting_amount
+        // amount must be equal to taker_amount
         if !valid_amount {
             return Err(Errors::InvalidDepositAmount.into());
         }
@@ -149,6 +177,7 @@ pub mod binary_options {
 
         //deposit_account.sol_vault_bump = ctx.bumps.get("sol_vault").copied();
 
+        /*
         // step 1: deposit sol to admin vault
         let cpi_accounts = system_program::Transfer {
             from: deposit_auth.to_account_info(),
@@ -158,8 +187,9 @@ pub mod binary_options {
         let cpi = CpiContext::new(sys_program.to_account_info(), cpi_accounts);
 
         system_program::transfer(cpi, fees)?;
+        */
 
-        // step 2: deposit sol to participants(limited to two) vault
+        // step 1: deposit sol to participants(limited to two) vault
         let cpi_accounts = system_program::Transfer {
             from: deposit_auth.to_account_info(),
             to: ctx.accounts.sol_vault.to_account_info(),
@@ -339,7 +369,7 @@ pub mod binary_options {
         Ok(())
     }
     */
-    pub fn process_prediction(ctx: Context<ProcessPrediction>, winning_position: ParticipantPosition, winning_amount: u64) -> Result<()> {
+    pub fn process_prediction(ctx: Context<ProcessPrediction>, winning_position: ParticipantPosition, bet_fees: u64) -> Result<()> {
         /*
         let valid_amount = {
             if asset_current_price > 0 {
@@ -353,7 +383,7 @@ pub mod binary_options {
         }
         */
         let valid_amount = {
-            if winning_amount > 0 {
+            if bet_fees > 0 {
                 true
             }
             else{false}
@@ -364,6 +394,8 @@ pub mod binary_options {
         }
 
         let deposit_account = &mut ctx.accounts.deposit_account;
+        let deposit_auth = &ctx.accounts.deposit_auth;
+        let sys_program = &ctx.accounts.system_program;
 
         // participant wins when strike_price is equal to asset_current_price
         /*
@@ -436,19 +468,51 @@ pub mod binary_options {
                 return Err(Errors::InvalidWinningAmount.into());
             }
 
-            deposit_account.total_payout = deposited_amount + winning_amount;    
+            deposit_account.total_payout = deposited_amount + winning_amount;
         }
         */
 
+        let bet_amount = deposit_account.bet_amount;
+        let taker_amount = deposit_account.taker_amount;
+
+        let valid_amount = {
+            if bet_amount + taker_amount > bet_fees  {
+                true
+            }
+            else{false}
+        };
+        // bet_fees exceeds (bet_amount + taker_amount)
+        if !valid_amount {
+            return Err(Errors::InvalidWinningAmount.into());
+        }
+        
+        let total_payout: u64 = bet_amount + taker_amount - bet_fees;
+        let mut valid_position = false;
         // first_participant - deposit_account.deposit_auth
         // second_participant -  deposit_account.taker_auth
         if first_participant_position && winning_position_bool {
             deposit_account.winner_auth = deposit_account.deposit_auth;
+            deposit_account.total_payout = total_payout;
+            valid_position = true;
         }
         else if second_participant_position && winning_position_bool {
             deposit_account.winner_auth = deposit_account.taker_auth;
+            deposit_account.total_payout = total_payout;
+            valid_position = true;
         }
         else{}
+
+        if valid_position {
+            // step 1: deposit (bet_fees) sol to admin vault
+            let cpi_accounts = system_program::Transfer {
+                from: deposit_auth.to_account_info(),
+                to: ctx.accounts.admin_sol_vault.to_account_info(),
+            };
+
+            let cpi = CpiContext::new(sys_program.to_account_info(), cpi_accounts);
+
+            system_program::transfer(cpi, bet_fees)?;
+        }
 
         Ok(())
     }
@@ -500,8 +564,8 @@ pub struct Initialize<'info> {
 
 #[derive(Accounts)]
 pub struct CreateBinaryOptions<'info> {
-    #[account(init, payer = deposit_auth, space = DepositBase::LEN)]
-    pub deposit_account: Account<'info, DepositBase>,
+    #[account(init, payer = deposit_auth, space = BinaryOption::LEN)]
+    pub deposit_account: Account<'info, BinaryOption>,
     #[account(seeds = [b"auth", deposit_account.key().as_ref()], bump)]
     /// CHECK: no need to check this.
     pub pda_auth: UncheckedAccount<'info>,
@@ -534,7 +598,7 @@ pub struct AcceptBinaryOptions<'info> {
     #[account(mut,
         constraint = deposit_account.betting_state == 1 @ Errors::InvalidParticipantsLimit,
     )]
-    pub deposit_account: Account<'info, DepositBase>,
+    pub deposit_account: Account<'info, BinaryOption>,
     #[account(seeds = [b"auth", deposit_account.key().as_ref()], bump = deposit_account.auth_bump)]
     /// CHECK: no need to check this.
     pub pda_auth: UncheckedAccount<'info>,
@@ -547,7 +611,7 @@ pub struct AcceptBinaryOptions<'info> {
 
 #[derive(Accounts)]
 pub struct WithdrawParticipantFunds<'info> {
-    pub deposit_account: Account<'info, DepositBase>,
+    pub deposit_account: Account<'info, BinaryOption>,
     #[account(seeds = [b"auth", deposit_account.key().as_ref()], bump = deposit_account.auth_bump)]
     /// CHECK: no need to check this.
     pub pda_auth: UncheckedAccount<'info>,
@@ -570,9 +634,20 @@ pub struct MakePrediction<'info> {
 #[derive(Accounts)]
 pub struct ProcessPrediction<'info> {
     #[account(has_one = deposit_auth)]
-    pub deposit_account: Account<'info, DepositBase>,
+    pub deposit_account: Account<'info, BinaryOption>,
     #[account(mut)]
     pub deposit_auth: Signer<'info>,
+    //admin accs
+    #[account(mut,
+        constraint = admin_deposit_account.is_initialized @ Errors::AccountNotInitialized
+    )]
+    pub admin_deposit_account: Account<'info, DepositBaseAdmin>,
+    #[account(seeds = [b"admin_auth", admin_deposit_account.key().as_ref()], bump = admin_deposit_account.admin_auth_bump)]
+    /// CHECK: no need to check this.
+    pub admin_pda_auth: UncheckedAccount<'info>,
+    #[account(mut, seeds = [b"admin_sol_vault", admin_pda_auth.key().as_ref()], bump = admin_deposit_account.admin_sol_vault_bump.unwrap())]
+    pub admin_sol_vault: SystemAccount<'info>,
+    //admin accs
     pub system_program: Program<'info, System>,
 }
 
@@ -591,16 +666,17 @@ pub struct Withdraw<'info> {
 }
 
 #[account]
-pub struct DepositBase {
+pub struct BinaryOption {
     pub deposit_auth: Pubkey,
     pub taker_auth: Pubkey,
     pub winner_auth: Pubkey,
     pub auth_bump: u8,
     pub sol_vault_bump: Option<u8>,
-    pub betting_description: String,
-    pub betting_amount: u64,
+    pub bet_description: String,
+    pub bet_amount: u64,
+    pub taker_amount: u64,
+    pub strike_price: u64,
     pub deposited_amount: u64,
-    //pub strike_price: u64,
     pub made_prediction: bool,
     //pub won_prediction: Participants,
     pub total_payout: u64,
@@ -609,7 +685,7 @@ pub struct DepositBase {
     pub betting_state: u8,
 }
 
-impl DepositBase {
+impl BinaryOption {
     const LEN: usize = 8 + 32 + 32 + 1 + 1 + 1 + 8 + 8 + 1 + 1 + 8 + 4 + DESCRIPTION_LENGTH + 1 + 1 + 1;
 }
 #[account]
@@ -645,7 +721,7 @@ pub enum Errors {
     AmountNotgreaterThanZero,
     #[msg("Withdrawal amount exceeds total payout amount.")]
     ExceededTotalPayoutAmount,
-    #[msg("Deposit amount must be equal to betting_amount.")]
+    #[msg("Deposit amount must be equal to bet_amount.")]
     InvalidDepositAmount,
     #[msg("Participant must make a prediction and win it.")]
     InvalidPrediction,
