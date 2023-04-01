@@ -265,7 +265,8 @@ pub mod binary_options {
         }
 
         let deposit_account = &mut ctx.accounts.deposit_account;
-        let deposit_auth = &ctx.accounts.deposit_auth;
+        let pda_auth = &mut ctx.accounts.pda_auth;
+        let sol_vault = &mut ctx.accounts.sol_vault;
         let sys_program = &ctx.accounts.system_program;
 
         let first_participant_position = {
@@ -336,11 +337,19 @@ pub mod binary_options {
         if valid_position {
             // step 1: deposit (bet_fees) sol to admin vault
             let cpi_accounts = system_program::Transfer {
-                from: deposit_auth.to_account_info(),
+                from: sol_vault.to_account_info(),
                 to: ctx.accounts.admin_sol_vault.to_account_info(),
             };
 
-            let cpi = CpiContext::new(sys_program.to_account_info(), cpi_accounts);
+            let seeds = &[
+                b"sol_vault",
+                pda_auth.to_account_info().key.as_ref(),
+                &[deposit_account.sol_vault_bump.unwrap()],
+            ];
+
+            let signer = &[&seeds[..]];
+
+            let cpi = CpiContext::new_with_signer(sys_program.to_account_info(), cpi_accounts, signer);
 
             system_program::transfer(cpi, bet_fees)?;
         }
@@ -455,10 +464,12 @@ pub struct WithdrawParticipantFunds<'info> {
 
 #[derive(Accounts)]
 pub struct ProcessPrediction<'info> {
-    #[account(has_one = deposit_auth)]
     pub deposit_account: Account<'info, BinaryOption>,
-    #[account(mut)]
-    pub deposit_auth: Signer<'info>,
+    #[account(seeds = [b"auth", deposit_account.key().as_ref()], bump = deposit_account.auth_bump)]
+    /// CHECK: no need to check this.
+    pub pda_auth: UncheckedAccount<'info>,
+    #[account(mut, seeds = [b"sol_vault", pda_auth.key().as_ref()], bump = deposit_account.sol_vault_bump.unwrap())]
+    pub sol_vault: SystemAccount<'info>,
     //admin accs
     #[account(mut,
         constraint = admin_deposit_account.is_initialized @ Errors::AccountNotInitialized
@@ -533,7 +544,10 @@ pub struct DepositBaseAdmin {
 }
 
 impl DepositBaseAdmin {
-    const LEN: usize = 8 + 32 + 1 + 1 + 1 + 1;
+    const LEN: usize = DISCRIMINATOR_LENGTH +
+                       PUBLIC_KEY_LENGTH +
+                       (1 + 2 * U8_LENGTH) +
+                       BOOL_LENGTH;
 }
 
 //Calculate the space for the enum. I just gave it value 1
@@ -541,13 +555,13 @@ impl DepositBaseAdmin {
 pub enum ParticipantPosition {
     Long,
     Short,
-    Unknown { val: u8 },
+    Unknown,// { val: u8 },
 }
 #[derive(AnchorSerialize, AnchorDeserialize, Copy, Clone)]
 pub enum Participants {
     First,
     Second,
-    Unknown { val: u8 },
+    Unknown,// { val: u8 },
 }
 
 #[error_code]
