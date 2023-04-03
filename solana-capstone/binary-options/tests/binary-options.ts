@@ -13,6 +13,8 @@ describe("binary-options", () => {
   const deposit_account = anchor.web3.Keypair.generate();
   const deposit_auth = anchor.web3.Keypair.generate(); // First participant
   const deposit_auth_2 = anchor.web3.Keypair.generate(); // Second participant
+  const config = anchor.web3.Keypair.generate();
+  let solToUSD = "J83w4HKfqxwcq3BEMMkPFSppX3gqekLyLJBexebFVkix";
 
   // admin
   let [admin_pda_auth, admin_pda_bump] = anchor.web3.PublicKey.findProgramAddressSync(
@@ -82,8 +84,14 @@ describe("binary-options", () => {
 
   it("Is initialized!", async () => {
     // Add your test here.
-    const tx = await program.methods.initialize()
+    const tx = await program.methods.initialize(
+      {
+        priceFeedId: new anchor.web3.PublicKey(solToUSD)
+      }
+    )
       .accounts({
+        program: program.programId,
+        config: config.publicKey,
         adminDepositAccount: admin_deposit_account.publicKey,
         adminPdaAuth: admin_pda_auth,
         adminSolVault: admin_sol_vault,
@@ -143,11 +151,12 @@ describe("binary-options", () => {
 
   it("Process Prediction", async () => {
     // Add your test here.
-    let winningPosition = { long: {} };
     let betFees = new anchor.BN(1 * anchor.web3.LAMPORTS_PER_SOL);
 
-    const tx = await program.methods.processPrediction(winningPosition, betFees)
+    const tx = await program.methods.processPrediction(betFees)
       .accounts({
+        config: config.publicKey,
+        pythPriceFeedAccount: new anchor.web3.PublicKey(solToUSD),
         depositAccount: deposit_account.publicKey,
         pdaAuth: pda_auth,
         solVault: sol_vault,

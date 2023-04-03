@@ -1,17 +1,31 @@
 use anchor_lang::{prelude::*, system_program};
+//
+use std::mem::size_of;
+//use anchor_lang::prelude::*;
+//use solana_program::account_info::AccountInfo;
+
+pub mod state;
+use state::PriceFeed;
+use state::AdminConfig;
+
+mod error;
+use error::Errors;
+//
 
 declare_id!("Fg6PaFpoGXkYsidMpWTK6W2BeZ7FEfcYkg476zPFsLnS");
 
-// betting description length
-const DESCRIPTION_LENGTH: usize = 10;
+const DESCRIPTION_LENGTH: usize = 10; // betting description length
+const STALENESS_THRESHOLD : u64 = 60; // staleness threshold in seconds
 
 #[program]
 pub mod binary_options {
     use super::*;
 
-    pub fn initialize(ctx: Context<Initialize>) -> Result<()> {
+    pub fn initialize(ctx: Context<Initialize>, config: AdminConfig) -> Result<()> {
         let deposit_account = &mut ctx.accounts.admin_deposit_account;
         let admin_auth = &ctx.accounts.admin_auth;
+
+        ctx.accounts.config.set_inner(config);
 
         deposit_account.admin_auth = *ctx.accounts.admin_auth.key;
         deposit_account.admin_auth_bump = *ctx.bumps.get("admin_pda_auth").unwrap();
@@ -252,7 +266,7 @@ pub mod binary_options {
         Ok(())
     }
 
-    pub fn process_prediction(ctx: Context<ProcessPrediction>, winning_position: ParticipantPosition, bet_fees: u64) -> Result<()> {
+    pub fn process_prediction(ctx: Context<ProcessPrediction>, bet_fees: u64) -> Result<()> {
         let valid_amount = {
             if bet_fees > 0 {
                 true
@@ -264,10 +278,24 @@ pub mod binary_options {
             return Err(Errors::AmountNotgreaterThanZero.into());
         }
 
+        // Test Pyth oracle price feeds
+        let price_feed = &ctx.accounts.pyth_price_feed_account;
+        let current_timestamp1 = Clock::get()?.unix_timestamp;
+        let current_price = price_feed
+            .get_price_no_older_than(current_timestamp1, STALENESS_THRESHOLD)
+            .ok_or(Errors::PythOffline)?;
+        //let price = (current_price.price + current_price.conf) * 10^current_price.expo;
+        //let current_price: Price = price_feed.get_price_no_older_than(current_timestamp, STALENESS_THRESHOLD).unwrap();
+        //msg!("price: ({} +- {}) x 10^{}", current_price.price, current_price.conf, current_price.expo);
+        let price  = current_price.price * 10^(current_price.expo as i64);
+        //
+
         let deposit_account = &mut ctx.accounts.deposit_account;
         let pda_auth = &mut ctx.accounts.pda_auth;
         let sol_vault = &mut ctx.accounts.sol_vault;
         let sys_program = &ctx.accounts.system_program;
+
+        let strike_price = deposit_account.strike_price;
 
         let first_participant_position = {
             match deposit_account.first_participant {
@@ -296,12 +324,22 @@ pub mod binary_options {
             // Both predictions cannot not be same.
             return Err(Errors::PredictionCannotBeSame.into()); 
         }
+        /*
         let winning_position_bool = {
             match winning_position {
                 ParticipantPosition::Long => true,
                 ParticipantPosition::Short => false,
                 _ => false
             }
+        };
+        */
+
+        // We are making an assumption that if the prices match then the long position was correct
+        let winning_position_bool = {
+            if strike_price == price as u64 {
+                true
+            }
+            else {false}
         };
 
         let bet_amount = deposit_account.bet_amount;
@@ -388,6 +426,14 @@ pub mod binary_options {
 
 #[derive(Accounts)]
 pub struct Initialize<'info> {
+    // Pyth Oracle price feeds accounts
+    #[account(address = *program_id @ Errors::Unauthorized)]
+    pub program: Signer<'info>,
+    //#[account(mut)]
+    //pub payer: Signer<'info>,
+    #[account(init, payer = admin_auth, space = 8 + size_of::<AdminConfig>())]
+    pub config: Account<'info, AdminConfig>,
+    //
     #[account(init, payer = admin_auth, space = DepositBaseAdmin::LEN,
         constraint = !admin_deposit_account.is_initialized @ Errors::AccountAlreadyInitialized
     )]
@@ -464,6 +510,13 @@ pub struct WithdrawParticipantFunds<'info> {
 
 #[derive(Accounts)]
 pub struct ProcessPrediction<'info> {
+    // Pyth Oracle price feeds accounts
+    pub config: Account<'info, AdminConfig>,
+    #[account(address = config.price_feed_id @ Errors::InvalidArgument)]
+    pub pyth_price_feed_account: Account<'info, PriceFeed>,
+    //#[account(address = config.collateral_price_feed_id @ Errors::InvalidArgument)]
+    //pub pyth_collateral_account: Account<'info, PriceFeed>,
+    //
     pub deposit_account: Account<'info, BinaryOption>,
     #[account(seeds = [b"auth", deposit_account.key().as_ref()], bump = deposit_account.auth_bump)]
     /// CHECK: no need to check this.
@@ -563,7 +616,7 @@ pub enum Participants {
     Second,
     Unknown,// { val: u8 },
 }
-
+/*
 #[error_code]
 pub enum Errors {
     #[msg("Insufficient amount to withdraw.")]
@@ -597,3 +650,4 @@ pub enum Errors {
     #[msg("Account is already initialized.")]
     AccountAlreadyInitialized,
 }
+ */
