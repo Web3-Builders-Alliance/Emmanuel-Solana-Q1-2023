@@ -1,0 +1,6 @@
+
+1.
+The Binary-Options smart contract was deployed on Solana testnet.
+
+2.
+The program id of the deployed Binary-Options is "JCqZPL84bJQKfQ1FZ4cYSWddYNpQCBXPjowjkCcdn9ZB"
